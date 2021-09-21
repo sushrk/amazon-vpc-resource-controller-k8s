@@ -102,3 +102,17 @@ func (mr *MockManagerMockRecorder) UpdateNode(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateNode", reflect.TypeOf((*MockManager)(nil).UpdateNode), arg0)
 }
+
+// UpdateNodesOnConfigMapChanges mocks base method
+func (m *MockManager) UpdateNodesOnConfigMapChanges() error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateNodesOnConfigMapChanges")
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateNodesOnConfigMapChanges indicates an expected call of UpdateNodesOnConfigMapChanges
+func (mr *MockManagerMockRecorder) UpdateNodesOnConfigMapChanges() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateNodesOnConfigMapChanges", reflect.TypeOf((*MockManager)(nil).UpdateNodesOnConfigMapChanges))
+}

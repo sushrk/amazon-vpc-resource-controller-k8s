@@ -15,7 +15,6 @@ webhooks:
       path: /mutate-v1-pod
   failurePolicy: Ignore
   name: mpod.vpc.k8s.aws
-  timeoutSeconds: 5
   rules:
   - apiGroups:
     - ""
@@ -43,7 +42,6 @@ webhooks:
       path: /validate-v1-pod
   failurePolicy: Ignore
   name: vpod.vpc.k8s.aws
-  timeoutSeconds: 5
   rules:
   - apiGroups:
     - ""

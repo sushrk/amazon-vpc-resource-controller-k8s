@@ -14,16 +14,24 @@
 package condition
 
 import (
-	"github.com/go-logr/logr"
+	"strconv"
 	"time"
+
+	"github.com/aws/amazon-vpc-resource-controller-k8s/pkg/k8s"
+	"github.com/go-logr/logr"
+	"github.com/prometheus/client_golang/prometheus"
+	"sigs.k8s.io/controller-runtime/pkg/metrics"
 )
 
 type condition struct {
 	hasDataStoreSynced *bool
 	log                logr.Logger
+	K8sAPI             k8s.K8sWrapper
 }
 
 const CheckDataStoreSyncedInterval = time.Second * 10
+
+var enableWindowsIPAMKey = "enable-windows-ipam"
 
 type Conditions interface {
 	// WaitTillPodDataStoreSynced waits till the Pod Data Store has synced
@@ -37,10 +45,34 @@ type Conditions interface {
 	IsPodSGPEnabled() bool
 }
 
-func NewControllerConditions(dataStoreSyncFlag *bool, log logr.Logger) Conditions {
+var (
+	conditionWindowsIPAMEnabled = prometheus.NewSummaryVec(
+		prometheus.SummaryOpts{
+			Name: "windows_ipam_enabled",
+			Help: "Windows IPAM enabled condition",
+		}, []string{"condition"},
+	)
+
+	prometheusRegistered = false
+)
+
+func prometheusRegister() {
+	if !prometheusRegistered {
+		metrics.Registry.MustRegister(
+			conditionWindowsIPAMEnabled,
+		)
+	}
+
+	prometheusRegistered = true
+}
+
+func NewControllerConditions(dataStoreSyncFlag *bool, log logr.Logger, k8sApi k8s.K8sWrapper) Conditions {
+	prometheusRegister()
+	conditionWindowsIPAMEnabled.WithLabelValues("enable_windows_ipam").Observe(0)
 	return &condition{
 		hasDataStoreSynced: dataStoreSyncFlag,
 		log:                log,
+		K8sAPI:             k8sApi,
 	}
 }
 
@@ -51,10 +83,27 @@ func (c *condition) WaitTillPodDataStoreSynced() {
 	}
 }
 
-// TODO: Add implementation later
 func (c *condition) IsWindowsIPAMEnabled() bool {
-	// TODO: Switch using ConfigMap
-	return true
+	// Return false if configmap not present/any errors
+	vpcCniConfigMap, err := c.K8sAPI.GetConfigMap("amazon-vpc-cni")
+	if err != nil {
+		return false
+	}
+	if len(vpcCniConfigMap.Data) == 0 {
+		return false
+	}
+	if val, ok := vpcCniConfigMap.Data[enableWindowsIPAMKey]; ok {
+		enableWinIPAM, err := strconv.ParseBool(val)
+		if err != nil {
+			return false
+		}
+		if enableWinIPAM {
+			c.log.Info("Return IsWindowsIPAMEnabled = True")
+			conditionWindowsIPAMEnabled.WithLabelValues(enableWindowsIPAMKey).Observe(1)
+		}
+		return enableWinIPAM
+	}
+	return false
 }
 
 // TODO: Add implementation later

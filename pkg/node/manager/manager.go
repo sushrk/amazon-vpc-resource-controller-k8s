@@ -19,6 +19,7 @@ import (
 	"sync"
 
 	"github.com/aws/amazon-vpc-resource-controller-k8s/pkg/api"
+	"github.com/aws/amazon-vpc-resource-controller-k8s/pkg/condition"
 	"github.com/aws/amazon-vpc-resource-controller-k8s/pkg/config"
 	"github.com/aws/amazon-vpc-resource-controller-k8s/pkg/node"
 	"github.com/aws/amazon-vpc-resource-controller-k8s/pkg/resource"
@@ -41,7 +42,8 @@ type manager struct {
 	// wrapper around the clients for all APIs used by controller
 	wrapper api.Wrapper
 	// worker for performing async operation on node APIs
-	worker asyncWorker.Worker
+	worker     asyncWorker.Worker
+	conditions condition.Conditions
 }
 
 // Manager to perform operation on list of managed/un-managed node
@@ -50,6 +52,7 @@ type Manager interface {
 	AddNode(nodeName string) error
 	UpdateNode(nodeName string) error
 	DeleteNode(nodeName string) error
+	UpdateNodesOnConfigMapChanges() error
 }
 
 // AsyncOperation is operation on a node after the lock has been released.
@@ -82,7 +85,7 @@ type AsyncOperationJob struct {
 
 // NewNodeManager returns a new node manager
 func NewNodeManager(logger logr.Logger, resourceManager resource.ResourceManager,
-	wrapper api.Wrapper, worker asyncWorker.Worker) (Manager, error) {
+	wrapper api.Wrapper, worker asyncWorker.Worker, conditions condition.Conditions) (Manager, error) {
 
 	manager := &manager{
 		resourceManager: resourceManager,
@@ -90,6 +93,7 @@ func NewNodeManager(logger logr.Logger, resourceManager resource.ResourceManager
 		dataStore:       make(map[string]node.Node),
 		wrapper:         wrapper,
 		worker:          worker,
+		conditions:      conditions,
 	}
 
 	return manager, worker.StartWorkerPool(manager.performAsyncOperation)
@@ -338,7 +342,7 @@ func (m *manager) isSelectedForManagement(v1node *v1.Node) bool {
 		return false
 	}
 
-	return isWindowsNode(v1node) || canAttachTrunk(v1node)
+	return m.conditions.IsWindowsIPAMEnabled() || canAttachTrunk(v1node)
 }
 
 // GetNodeInstanceID returns the EC2 instance ID of a node
@@ -385,4 +389,23 @@ func isWindowsNode(node *v1.Node) bool {
 func canAttachTrunk(node *v1.Node) bool {
 	_, ok := node.Labels[config.HasTrunkAttachedLabel]
 	return ok
+}
+
+// Update nodes on configmap changes
+func (m *manager) UpdateNodesOnConfigMapChanges() error {
+	nodeList, err := m.wrapper.K8sAPI.ListNodes()
+	if err != nil {
+		return err
+	}
+	for _, node := range nodeList.Items {
+		_, found := m.GetNode(node.Name)
+		if found {
+			m.Log.Info("Updating node ", node.Name, " on configmap change")
+			err = m.UpdateNode(node.Name)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
