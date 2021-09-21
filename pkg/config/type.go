@@ -61,8 +61,10 @@ const (
 )
 
 const (
-	LeaderElectionKey       = "cp-vpc-resource-controller"
-	LeaderElectionNamespace = "kube-system"
+	LeaderElectionKey    = "cp-vpc-resource-controller"
+	KubeSystemNamespace  = "kube-system"
+	VpcCniConfigMapName  = "amazon-vpc-cni"
+	EnableWindowsIPAMKey = "enable-windows-ipam"
 )
 
 var (

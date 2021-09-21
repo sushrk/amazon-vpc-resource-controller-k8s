@@ -52,7 +52,6 @@ type Manager interface {
 	AddNode(nodeName string) error
 	UpdateNode(nodeName string) error
 	DeleteNode(nodeName string) error
-	UpdateNodesOnConfigMapChanges() error
 }
 
 // AsyncOperation is operation on a node after the lock has been released.
@@ -176,6 +175,7 @@ func (m *manager) UpdateNode(nodeName string) error {
 	cachedNode, found := m.dataStore[nodeName]
 	if !found {
 		m.Log.Info("the node doesn't exist in cache anymore, it might have been deleted")
+		return nil
 	}
 
 	var op AsyncOperation
@@ -389,23 +389,4 @@ func isWindowsNode(node *v1.Node) bool {
 func canAttachTrunk(node *v1.Node) bool {
 	_, ok := node.Labels[config.HasTrunkAttachedLabel]
 	return ok
-}
-
-// Update nodes on configmap changes
-func (m *manager) UpdateNodesOnConfigMapChanges() error {
-	nodeList, err := m.wrapper.K8sAPI.ListNodes()
-	if err != nil {
-		return err
-	}
-	for _, node := range nodeList.Items {
-		_, found := m.GetNode(node.Name)
-		if found {
-			m.Log.Info("Updating node ", node.Name, " on configmap change")
-			err = m.UpdateNode(node.Name)
-			if err != nil {
-				return err
-			}
-		}
-	}
-	return nil
 }
