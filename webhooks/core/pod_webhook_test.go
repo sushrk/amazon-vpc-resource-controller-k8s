@@ -20,7 +20,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aws/amazon-vpc-resource-controller-k8s/mocks/amazon-vcp-resource-controller-k8s/pkg/utils"
+	mock_condition "github.com/aws/amazon-vpc-resource-controller-k8s/mocks/amazon-vcp-resource-controller-k8s/pkg/condition"
+	mock_utils "github.com/aws/amazon-vpc-resource-controller-k8s/mocks/amazon-vcp-resource-controller-k8s/pkg/utils"
 	"github.com/aws/amazon-vpc-resource-controller-k8s/pkg/config"
 
 	"github.com/golang/mock/gomock"
@@ -45,7 +46,8 @@ var (
 )
 
 type Mock struct {
-	SGPMock *mock_utils.MockSecurityGroupForPodsAPI
+	SGPMock        *mock_utils.MockSecurityGroupForPodsAPI
+	ConditionsMock *mock_condition.MockConditions
 }
 
 func TestPodMutationWebHook_Handle(t *testing.T) {
@@ -400,6 +402,9 @@ func TestPodMutationWebHook_Handle(t *testing.T) {
 					},
 				},
 			},
+			mockInvocation: func(mock Mock) {
+				mock.ConditionsMock.EXPECT().IsWindowsIPAMEnabled().Return(true)
+			},
 			want: admission.Response{
 				Patches: []jsonpatch.JsonPatchOperation{
 					{
@@ -428,6 +433,9 @@ func TestPodMutationWebHook_Handle(t *testing.T) {
 						Object: windowsPodBeta,
 					},
 				},
+			},
+			mockInvocation: func(mock Mock) {
+				mock.ConditionsMock.EXPECT().IsWindowsIPAMEnabled().Return(true)
 			},
 			want: admission.Response{
 				Patches: []jsonpatch.JsonPatchOperation{
@@ -458,6 +466,9 @@ func TestPodMutationWebHook_Handle(t *testing.T) {
 					},
 				},
 			},
+			mockInvocation: func(mock Mock) {
+				mock.ConditionsMock.EXPECT().IsWindowsIPAMEnabled().Return(true)
+			},
 			want: admission.Response{
 				Patches: []jsonpatch.JsonPatchOperation{
 					{
@@ -486,12 +497,14 @@ func TestPodMutationWebHook_Handle(t *testing.T) {
 
 			ctx := context.TODO()
 			mock := Mock{
-				SGPMock: mock_utils.NewMockSecurityGroupForPodsAPI(ctrl),
+				SGPMock:        mock_utils.NewMockSecurityGroupForPodsAPI(ctrl),
+				ConditionsMock: mock_condition.NewMockConditions(ctrl),
 			}
 			h := &PodMutationWebHook{
-				decoder: decoder,
-				Log:     zap.New(),
-				SGPAPI:  mock.SGPMock,
+				decoder:    decoder,
+				Log:        zap.New(),
+				SGPAPI:     mock.SGPMock,
+				Conditions: mock.ConditionsMock,
 			}
 
 			if tt.mockInvocation != nil {
