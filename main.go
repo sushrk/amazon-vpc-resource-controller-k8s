@@ -185,10 +185,10 @@ func main() {
 	// filter cache to subscribe to events from specific configmaps
 	newCache := cache.BuilderWithOptions(cache.Options{
 		SelectorsByObject: cache.SelectorsByObject{
-			&corev1.ConfigMap{}: {
-				Field: fields.AndSelectors(fields.SelectorFromSet(fields.Set{"metadata.name": "amazon-vpc-cni"}),
-					fields.SelectorFromSet(fields.Set{"metadata.name": config.LeaderElectionKey}),
-					fields.SelectorFromSet(fields.Set{"metadata.namespace": "kube-system"})),
+			&corev1.ConfigMap{}: {Field: fields.Set{
+				"metadata.name":      config.VpcCniConfigMapName,
+				"metadata.namespace": config.KubeSystemNamespace,
+			}.AsSelector(),
 			},
 		},
 	})
@@ -203,7 +203,7 @@ func main() {
 		RenewDeadline:              &renewDeadline,
 		RetryPeriod:                &retryPeriod,
 		LeaderElectionID:           config.LeaderElectionKey,
-		LeaderElectionNamespace:    config.LeaderElectionNamespace,
+		LeaderElectionNamespace:    config.KubeSystemNamespace,
 		LeaderElectionResourceLock: resourcelock.ConfigMapsResourceLock,
 		HealthProbeBindAddress:     ":61779", // the liveness endpoint is default to "/healthz"
 		NewCache:                   newCache,
@@ -311,6 +311,7 @@ func main() {
 		Log:         ctrl.Log.WithName("controllers").WithName("ConfigMap"),
 		Scheme:      mgr.GetScheme(),
 		NodeManager: nodeManager,
+		K8sAPI:      k8sApi,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ConfigMap")
 		os.Exit(1)

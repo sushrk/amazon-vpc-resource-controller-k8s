@@ -34,15 +34,16 @@ func DeleteConfigMap(k8sClient client.Client, ctx context.Context, configmap *v1
 	Expect(err).NotTo(HaveOccurred())
 }
 
-func UpdateConfigMapAndWait(k8sClient client.Client, ctx context.Context, configmap *v1.ConfigMap, data map[string]string) {
+func UpdateConfigMap(k8sClient client.Client, ctx context.Context, configmap *v1.ConfigMap, data map[string]string) {
 	By("updating the configmap")
-	updatedConfigmap := &v1.ConfigMap{}
+	observedConfigMap := &v1.ConfigMap{}
 	err := k8sClient.Get(ctx, client.ObjectKey{
 		Namespace: configmap.Namespace,
 		Name:      configmap.Name,
-	}, updatedConfigmap)
+	}, observedConfigMap)
 	Expect(err).NotTo(HaveOccurred())
 
+	updatedConfigmap := observedConfigMap.DeepCopy()
 	updatedConfigmap.Data = data
 	err = k8sClient.Update(ctx, updatedConfigmap)
 	Expect(err).NotTo(HaveOccurred())

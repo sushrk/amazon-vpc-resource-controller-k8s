@@ -15,7 +15,10 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 
+	"github.com/aws/amazon-vpc-resource-controller-k8s/pkg/config"
+	"github.com/aws/amazon-vpc-resource-controller-k8s/pkg/k8s"
 	"github.com/aws/amazon-vpc-resource-controller-k8s/pkg/node/manager"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -31,41 +34,38 @@ type ConfigMapReconciler struct {
 	Log         logr.Logger
 	Scheme      *runtime.Scheme
 	NodeManager manager.Manager
+	K8sAPI      k8s.K8sWrapper
 }
 
-//+kubebuilder:rbac:groups=core,resources=configmaps,verbs=get;list;watch
-//+kubebuilder:rbac:groups=core,resources=configmaps/status,verbs=get;patch
+//+kubebuilder:rbac:groups=core,resources=configmaps,resourceNames=amazon-vpc-cni,verbs=get;list;watch
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the ConfigMap object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.6.4/pkg/reconcile
+// Reconcile handles configmap create/update/delete events by invoking NodeManager
+// to update the status of the nodes as per the enable-windows-ipam flag value.
+
 func (r *ConfigMapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := r.Log.WithValues("configmap", req.NamespacedName)
 
-	// We only want to update nodes on amazon-vpc-cni updates, return here for other updates
-	if req.Name != "amazon-vpc-cni" {
+	// only update nodes on amazon-vpc-cni updates, return here for other updates
+	if req.Name != config.VpcCniConfigMapName {
 		return ctrl.Result{}, nil
 	}
 	configmap := &corev1.ConfigMap{}
 	if err := r.Client.Get(ctx, req.NamespacedName, configmap); err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info(req.Name, " ConfigMap is deleted")
+			logger.Info("amazon-vpc-cni configMap is deleted")
 		} else {
 			// Error reading the object
-			logger.Error(err, "Failed to get ConfigMap ", req.Name)
+			logger.Error(err, "Failed to get configMap")
 			return ctrl.Result{}, err
 		}
 	}
 
-	logger.Info("Enable-Windows-IPAM=", configmap.Data["enable-windows-ipam"])
+	if val, ok := configmap.Data[config.EnableWindowsIPAMKey]; ok {
+		logger.Info("ConfigMap updated, enable-windows-ipam=", "Value", val)
+	}
+
 	// Configmap is created/updated/deleted, update nodes
-	err := r.NodeManager.UpdateNodesOnConfigMapChanges()
+	err := r.UpdateNodesOnConfigMapChanges(r.NodeManager)
 	if err != nil {
 		// Error in updating nodes
 		logger.Error(err, "Failed to update nodes on configmap changes")
@@ -80,4 +80,25 @@ func (r *ConfigMapReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&corev1.ConfigMap{}).
 		Complete(r)
+}
+
+func (r *ConfigMapReconciler) UpdateNodesOnConfigMapChanges(nodeManager manager.Manager) error {
+	nodeList, err := r.K8sAPI.ListNodes()
+	if err != nil {
+		return err
+	}
+	var errList []error
+	for _, node := range nodeList.Items {
+		_, found := nodeManager.GetNode(node.Name)
+		if found {
+			err = nodeManager.UpdateNode(node.Name)
+			if err != nil {
+				errList = append(errList, err)
+			}
+		}
+	}
+	if len(errList) > 0 {
+		return fmt.Errorf("failed to update one or more nodes %v", errList)
+	}
+	return nil
 }

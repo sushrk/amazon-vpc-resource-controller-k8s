@@ -14,6 +14,7 @@
 package manifest
 
 import (
+	"github.com/aws/amazon-vpc-resource-controller-k8s/pkg/config"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -28,6 +29,7 @@ func NewConfigMapBuilder() *ConfigMapBuilder {
 	return &ConfigMapBuilder{
 		namespace: "windows-test",
 		name:      "amazon-vpc-cni",
+		data:      map[string]string{config.EnableWindowsIPAMKey: "true"},
 	}
 }
 func (c *ConfigMapBuilder) Build() *v1.ConfigMap {
@@ -49,5 +51,6 @@ func (c *ConfigMapBuilder) Namespace(namespace string) *ConfigMapBuilder {
 	return c
 }
 func (c *ConfigMapBuilder) Data(data map[string]string) *ConfigMapBuilder {
+	c.data = data
 	return c
 }

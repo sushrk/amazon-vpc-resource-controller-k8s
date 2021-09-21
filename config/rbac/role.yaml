@@ -25,19 +25,14 @@ rules:
   - watch
 - apiGroups:
   - ""
+  resourceNames:
+  - amazon-vpc-cni
   resources:
   - configmaps
   verbs:
   - get
   - list
   - watch
-- apiGroups:
-  - ""
-  resources:
-  - configmaps/status
-  verbs:
-  - get
-  - patch
 - apiGroups:
   - ""
   resources:
