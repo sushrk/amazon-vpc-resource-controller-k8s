@@ -25,16 +25,6 @@ rules:
   - watch
 - apiGroups:
   - ""
-  resourceNames:
-  - amazon-vpc-cni
-  resources:
-  - configmaps
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - ""
   resources:
   - nodes
   verbs:
@@ -68,6 +58,25 @@ rules:
   - vpcresources.k8s.aws
   resources:
   - securitygrouppolicies
+  verbs:
+  - get
+  - list
+  - watch
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  creationTimestamp: null
+  name: controller-role
+  namespace: kube-system
+rules:
+- apiGroups:
+  - ""
+  resourceNames:
+  - amazon-vpc-cni
+  resources:
+  - configmaps
   verbs:
   - get
   - list

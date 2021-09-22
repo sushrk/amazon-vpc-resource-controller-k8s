@@ -507,6 +507,21 @@ func TestPodMutationWebHook_Handle(t *testing.T) {
 				mock.ConditionMock.EXPECT().IsWindowsIPAMEnabled().Return(false)
 			},
 		},
+		{
+			name: "[Windows] if IsWindowsIPAMEnabled returns false, it should be no-op",
+			req: admission.Request{
+				AdmissionRequest: admissionv1.AdmissionRequest{
+					Object: runtime.RawExtension{
+						Raw:    windowsBetaPodRaw,
+						Object: windowsPodBeta,
+					},
+				},
+			},
+			mockInvocation: func(mock Mock) {
+				mock.ConditionsMock.EXPECT().IsWindowsIPAMEnabled().Return(false)
+			},
+			want: admission.Response{},
+		},
 	}
 
 	for _, tt := range test {

@@ -37,7 +37,7 @@ type ConfigMapReconciler struct {
 	K8sAPI      k8s.K8sWrapper
 }
 
-//+kubebuilder:rbac:groups=core,resources=configmaps,resourceNames=amazon-vpc-cni,verbs=get;list;watch
+//+kubebuilder:rbac:groups=core,resources=configmaps,namespace=kube-system,resourceNames=amazon-vpc-cni,verbs=get;list;watch
 
 // Reconcile handles configmap create/update/delete events by invoking NodeManager
 // to update the status of the nodes as per the enable-windows-ipam flag value.
@@ -52,6 +52,7 @@ func (r *ConfigMapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	configmap := &corev1.ConfigMap{}
 	if err := r.Client.Get(ctx, req.NamespacedName, configmap); err != nil {
 		if errors.IsNotFound(err) {
+			// If the configMap is deleted, de-register all the nodes
 			logger.Info("amazon-vpc-cni configMap is deleted")
 		} else {
 			// Error reading the object
@@ -61,11 +62,13 @@ func (r *ConfigMapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	if val, ok := configmap.Data[config.EnableWindowsIPAMKey]; ok {
-		logger.Info("ConfigMap updated, enable-windows-ipam=", "Value", val)
+		logger.Info("updated %v", "value", config.EnableWindowsIPAMKey, val)
 	}
 
+	// TODO: Only call UpdateNodesOnConfigMapChanges on enable-windows-ipam flag changes
+
 	// Configmap is created/updated/deleted, update nodes
-	err := r.UpdateNodesOnConfigMapChanges(r.NodeManager)
+	err := r.UpdateNodesOnConfigMapChanges()
 	if err != nil {
 		// Error in updating nodes
 		logger.Error(err, "Failed to update nodes on configmap changes")
@@ -82,16 +85,16 @@ func (r *ConfigMapReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func (r *ConfigMapReconciler) UpdateNodesOnConfigMapChanges(nodeManager manager.Manager) error {
+func (r *ConfigMapReconciler) UpdateNodesOnConfigMapChanges() error {
 	nodeList, err := r.K8sAPI.ListNodes()
 	if err != nil {
 		return err
 	}
 	var errList []error
 	for _, node := range nodeList.Items {
-		_, found := nodeManager.GetNode(node.Name)
+		_, found := r.NodeManager.GetNode(node.Name)
 		if found {
-			err = nodeManager.UpdateNode(node.Name)
+			err = r.NodeManager.UpdateNode(node.Name)
 			if err != nil {
 				errList = append(errList, err)
 			}

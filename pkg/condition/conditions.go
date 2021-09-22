@@ -45,12 +45,11 @@ type Conditions interface {
 }
 
 var (
-	conditionWindowsIPAMEnabled = prometheus.NewGaugeVec(
+	conditionWindowsIPAMEnabled = prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Name: "windows_ipam_enabled",
-			Help: "Windows IPAM enabled condition",
-		},
-		[]string{})
+			Help: "Binary value to indicate whether user has set enable-windows-ipam to true",
+		})
 
 	prometheusRegistered = false
 )
@@ -67,7 +66,7 @@ func prometheusRegister() {
 
 func NewControllerConditions(dataStoreSyncFlag *bool, log logr.Logger, k8sApi k8s.K8sWrapper) Conditions {
 	prometheusRegister()
-	conditionWindowsIPAMEnabled.WithLabelValues().Set(0)
+	conditionWindowsIPAMEnabled.Set(0)
 
 	return &condition{
 		hasDataStoreSynced: dataStoreSyncFlag,
@@ -91,13 +90,13 @@ func (c *condition) IsWindowsIPAMEnabled() bool {
 		if val, ok := vpcCniConfigMap.Data[config.EnableWindowsIPAMKey]; ok {
 			enableWinIpamVal, err := strconv.ParseBool(val)
 			if err == nil && enableWinIpamVal {
-				conditionWindowsIPAMEnabled.WithLabelValues().Set(1)
+				conditionWindowsIPAMEnabled.Set(1)
 				return true
 			}
 		}
 	}
 
-	conditionWindowsIPAMEnabled.WithLabelValues().Set(0)
+	conditionWindowsIPAMEnabled.Set(0)
 	return false
 }
 

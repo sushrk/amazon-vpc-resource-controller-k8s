@@ -187,7 +187,7 @@ func main() {
 		SelectorsByObject: cache.SelectorsByObject{
 			&corev1.ConfigMap{}: {Field: fields.Set{
 				"metadata.name":      config.VpcCniConfigMapName,
-				"metadata.namespace": config.KubeSystemNamespace,
+				"metadata.namespace": config.VpcCNIConfigMapNamespace,
 			}.AsSelector(),
 			},
 		},
@@ -203,7 +203,7 @@ func main() {
 		RenewDeadline:              &renewDeadline,
 		RetryPeriod:                &retryPeriod,
 		LeaderElectionID:           config.LeaderElectionKey,
-		LeaderElectionNamespace:    config.KubeSystemNamespace,
+		LeaderElectionNamespace:    config.LeaderElectionNamespace,
 		LeaderElectionResourceLock: resourcelock.ConfigMapsResourceLock,
 		HealthProbeBindAddress:     ":61779", // the liveness endpoint is default to "/healthz"
 		NewCache:                   newCache,

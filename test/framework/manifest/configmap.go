@@ -27,7 +27,7 @@ type ConfigMapBuilder struct {
 
 func NewConfigMapBuilder() *ConfigMapBuilder {
 	return &ConfigMapBuilder{
-		namespace: "windows-test",
+		namespace: "kube-system",
 		name:      "amazon-vpc-cni",
 		data:      map[string]string{config.EnableWindowsIPAMKey: "true"},
 	}

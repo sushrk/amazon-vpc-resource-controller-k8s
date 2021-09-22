@@ -105,9 +105,8 @@ var _ = Describe("Windows Integration Test", func() {
 
 			Context("when enable-windows-ipam is True", func() {
 				It("pod should be running and have resourceLimit injected", func() {
-					createdPod, err = frameWork.PodManager.CreateAndWaitTillPodIsCompleted(ctx, testPod)
+					createdPod, err = frameWork.PodManager.CreateAndWaitTillPodIsRunning(ctx, testPod, utils.ResourceCreationTimeout)
 					Expect(err).ToNot(HaveOccurred())
-
 					verify.WindowsPodHaveResourceLimits(createdPod, true)
 				})
 			})

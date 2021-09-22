@@ -342,7 +342,7 @@ func (m *manager) isSelectedForManagement(v1node *v1.Node) bool {
 		return false
 	}
 
-	return m.conditions.IsWindowsIPAMEnabled() || canAttachTrunk(v1node)
+	return (isWindowsNode(v1node) && m.conditions.IsWindowsIPAMEnabled()) || canAttachTrunk(v1node)
 }
 
 // GetNodeInstanceID returns the EC2 instance ID of a node
