@@ -62,7 +62,7 @@ func (r *ConfigMapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	if val, ok := configmap.Data[config.EnableWindowsIPAMKey]; ok {
-		logger.Info("updated %v", "value", config.EnableWindowsIPAMKey, val)
+		logger.Info("updated configmap", config.EnableWindowsIPAMKey, val)
 	}
 
 	// TODO: Only call UpdateNodesOnConfigMapChanges on enable-windows-ipam flag changes

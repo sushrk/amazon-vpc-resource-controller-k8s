@@ -24,6 +24,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+// TODO: create a manager and poll to wait for operation
 func CreateConfigMap(k8sClient client.Client, ctx context.Context, configmap *v1.ConfigMap) {
 	By("creating the configmap")
 	err := k8sClient.Create(ctx, configmap)

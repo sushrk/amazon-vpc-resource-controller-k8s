@@ -180,7 +180,6 @@ func Test_AddNode(t *testing.T) {
 
 	mock.MockK8sAPI.EXPECT().GetNode(nodeName).Return(v1Node, nil)
 	mock.MockWorker.EXPECT().SubmitJob(gomock.All(NewAsyncOperationMatcher(expectedJob)))
-	mock.MockConditions.EXPECT().IsWindowsIPAMEnabled().Return(true)
 
 	err := mock.Manager.AddNode(nodeName)
 	assert.NoError(t, err)
@@ -237,7 +236,6 @@ func Test_AddNode_CustomNetworking(t *testing.T) {
 	mock.MockK8sAPI.EXPECT().GetNode(nodeName).Return(nodeWithENIConfig, nil)
 	mock.MockK8sAPI.EXPECT().GetENIConfig(eniConfigName).Return(eniConfig, nil)
 	mock.MockWorker.EXPECT().SubmitJob(gomock.All(NewAsyncOperationMatcher(job)))
-	mock.MockConditions.EXPECT().IsWindowsIPAMEnabled().Return(true)
 
 	err := mock.Manager.AddNode(nodeName)
 	assert.NoError(t, err)
@@ -256,7 +254,6 @@ func Test_AddNode_CustomNetworking_NoENIConfig(t *testing.T) {
 
 	mock.MockK8sAPI.EXPECT().GetNode(nodeName).Return(nodeWithENIConfig, nil)
 	mock.MockK8sAPI.EXPECT().GetENIConfig(eniConfigName).Return(nil, mockError)
-	mock.MockConditions.EXPECT().IsWindowsIPAMEnabled().Return(true)
 
 	err := mock.Manager.AddNode(nodeName)
 	assert.NotContains(t, mock.Manager.dataStore, nodeName)
@@ -277,7 +274,6 @@ func Test_UpdateNode_Managed(t *testing.T) {
 
 	mock.MockK8sAPI.EXPECT().GetNode(nodeName).Return(v1Node, nil)
 	mock.MockWorker.EXPECT().SubmitJob(gomock.All(NewAsyncOperationMatcher(job)))
-	mock.MockConditions.EXPECT().IsWindowsIPAMEnabled().Return(true)
 
 	err := mock.Manager.UpdateNode(nodeName)
 	assert.NoError(t, err)
@@ -341,7 +337,6 @@ func Test_UpdateNode_UnManagedToManaged(t *testing.T) {
 	}
 	mock.MockK8sAPI.EXPECT().GetNode(v1Node.Name).Return(v1Node, nil)
 	mock.MockWorker.EXPECT().SubmitJob(gomock.All(NewAsyncOperationMatcher(job)))
-	mock.MockConditions.EXPECT().IsWindowsIPAMEnabled().Return(true)
 
 	err := mock.Manager.UpdateNode(v1Node.Name)
 	assert.NoError(t, err)
@@ -369,7 +364,6 @@ func Test_UpdateNode_UnManagedToManaged_WithENIConfig(t *testing.T) {
 	mock.MockK8sAPI.EXPECT().GetNode(v1Node.Name).Return(nodeWithENIConfig, nil)
 	mock.MockK8sAPI.EXPECT().GetENIConfig(eniConfigName).Return(eniConfig, nil)
 	mock.MockWorker.EXPECT().SubmitJob(gomock.All(NewAsyncOperationMatcher(job)))
-	mock.MockConditions.EXPECT().IsWindowsIPAMEnabled().Return(true)
 
 	err := mock.Manager.UpdateNode(v1Node.Name)
 	assert.NoError(t, err)
@@ -529,7 +523,6 @@ func Test_isSelectedForManagement_WindowsIPAMEnabled_False(t *testing.T) {
 	defer ctrl.Finish()
 
 	mock := NewMock(ctrl, map[string]node.Node{})
-	mock.MockConditions.EXPECT().IsWindowsIPAMEnabled().Return(true)
 
 	isSelected := mock.Manager.isSelectedForManagement(v1Node)
 	assert.True(t, isSelected)
