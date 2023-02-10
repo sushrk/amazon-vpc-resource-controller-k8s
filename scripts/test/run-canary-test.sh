@@ -132,10 +132,8 @@ else
   install_add_on "$LATEST_ADDON_VERSION"
 fi
 
-attach_controller_policy_cluster_role
 set_env_aws_node "ENABLE_POD_ENI" "true"
 run_canary_tests
 set_env_aws_node "ENABLE_POD_ENI" "false"
-detach_controller_policy_cluster_role
 
 echo "Successfully ran all tests in $(($SECONDS / 60)) minutes and $(($SECONDS % 60)) seconds"
