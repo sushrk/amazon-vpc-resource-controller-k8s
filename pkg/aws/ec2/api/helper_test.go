@@ -179,7 +179,7 @@ var (
 
 	tokenID = "token"
 
-	describeTrunkInterfaceInput = &ec2.DescribeNetworkInterfacesInput{
+	describeTrunkInterfaceInput1 = &ec2.DescribeNetworkInterfacesInput{
 		Filters: []*ec2.Filter{
 			{
 				Name:   aws.String("tag:" + config.TrunkENIIDTag),
@@ -190,6 +190,19 @@ var (
 				Values: aws.StringSlice([]string{subnetId}),
 			},
 		},
+	}
+	describeTrunkInterfaceInput2 = &ec2.DescribeNetworkInterfacesInput{
+		Filters: []*ec2.Filter{
+			{
+				Name:   aws.String("tag:" + config.TrunkENIIDTag),
+				Values: []*string{&trunkInterfaceId},
+			},
+			{
+				Name:   aws.String("subnet-id"),
+				Values: aws.StringSlice([]string{subnetId}),
+			},
+		},
+		NextToken: &tokenID,
 	}
 
 	describeTrunkInterfaceOutput = &ec2.DescribeNetworkInterfacesOutput{

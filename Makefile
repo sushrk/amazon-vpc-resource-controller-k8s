@@ -13,9 +13,11 @@ VERSION ?= $(GIT_VERSION)
 IMAGE ?= $(REPO):$(VERSION)
 BASE_IMAGE ?= public.ecr.aws/eks-distro-build-tooling/eks-distro-minimal-base-nonroot:latest.2
 GOLANG_VERSION ?= $(shell cat .go-version)
-BUILD_IMAGE ?= public.ecr.aws/bitnami/golang:$(GOLANG_VERSION)
+BUILD_IMAGE ?= public.ecr.aws/docker/library/golang:$(GOLANG_VERSION)
 GOARCH ?= amd64
 PLATFORM ?= linux/amd64
+USER_ROLE_ARN ?= arn:aws:iam::$(AWS_ACCOUNT):role/VPCResourceControllerRole
+BETA_CLUSTER ?= false
 
 export GOSUMDB = sum.golang.org
 export GOTOOLCHAIN = go$(GOLANG_VERSION)
@@ -54,6 +56,11 @@ toolchain: ## Install developer toolchain
 	./hack/toolchain.sh
 
 apply: image check-deployment-env check-env ## Deploy controller to ~/.kube/config
+ifeq ($(BETA_CLUSTER), true)
+	VPC_ID=$(shell aws eks describe-cluster --name ${CLUSTER_NAME} --region ${AWS_REGION} --endpoint https://api.beta.us-west-2.wesley.amazonaws.com --query "cluster.resourcesVpcConfig" --output json | jq '.vpcId')
+else
+	VPC_ID=$(shell aws eks describe-cluster --name ${CLUSTER_NAME} --region ${AWS_REGION} --query "cluster.resourcesVpcConfig" --output json | jq '.vpcId')
+endif
 	eksctl create iamserviceaccount vpc-resource-controller --namespace kube-system --cluster ${CLUSTER_NAME} --region ${AWS_REGION} \
 		--role-name VPCResourceControllerRole \
 		--attach-policy-arn=arn:aws:iam::aws:policy/AdministratorAccess \
@@ -61,7 +68,7 @@ apply: image check-deployment-env check-env ## Deploy controller to ~/.kube/conf
 		--approve
 	kustomize build config/crd | kubectl apply -f -
 	cd config/controller && kustomize edit set image controller=${IMAGE}
-	kustomize build config/default | sed "s|CLUSTER_NAME|${CLUSTER_NAME}|g;s|USER_ROLE_ARN|${USER_ROLE_ARN}|g" | kubectl apply -f -
+	kustomize build config/default | sed "s|CLUSTER_NAME|${CLUSTER_NAME}|g;s|USER_ROLE_ARN|${USER_ROLE_ARN}|g;s|VPC_ID|${VPC_ID}|g" | kubectl apply -f -
 	kubectl patch rolebinding eks-vpc-resource-controller-rolebinding -n kube-system --patch '{"subjects":[{"kind":"ServiceAccount","name":"vpc-resource-controller","namespace":"kube-system"}]}'
 	kubectl patch clusterrolebinding vpc-resource-controller-rolebinding --patch '{"subjects":[{"kind":"ServiceAccount","name":"vpc-resource-controller","namespace":"kube-system"}]}'
 
@@ -78,6 +85,11 @@ docker-buildx: check-env test
 # Build the docker image
 docker-build: check-env test
 	docker build --build-arg BASE_IMAGE=$(BASE_IMAGE) --build-arg ARCH=$(GOARCH) --build-arg BUILD_IMAGE=$(BUILD_IMAGE) . -t ${IMAGE}
+
+
+# Build the docker image with buildx and no tests
+docker-buildx-no-test:
+	docker buildx build --platform=$(PLATFORM) -t $(IMAGE)_$(GOARCH) --build-arg BASE_IMAGE=$(BASE_IMAGE) --build-arg BUILD_IMAGE=$(BUILD_IMAGE) --build-arg $(GOARCH) --load .
 
 # Push the docker image
 docker-push: check-env

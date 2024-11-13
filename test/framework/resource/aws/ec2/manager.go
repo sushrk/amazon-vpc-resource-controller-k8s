@@ -17,9 +17,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/aws/amazon-vpc-resource-controller-k8s/test/framework/utils"
-
 	"github.com/aws/amazon-vpc-resource-controller-k8s/pkg/aws/vpc"
+	"github.com/aws/amazon-vpc-resource-controller-k8s/test/framework/utils"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/ec2"
@@ -279,4 +278,21 @@ func (d *Manager) DeleteNetworkInterface(nwInterfaceID string) error {
 		NetworkInterfaceId: aws.String(nwInterfaceID),
 	})
 	return err
+}
+func (d *Manager) ReCreateSG(securityGroupName string, ctx context.Context) (string, error) {
+	groupID, err := d.GetSecurityGroupID(securityGroupName)
+	// If the security group already exists, no error will be returned
+	// We need to delete the security Group in this case so ingres/egress
+	// rules from last run don't interfere with the current test
+	if err == nil {
+		if err = d.DeleteSecurityGroup(ctx, groupID); err != nil {
+			return "", err
+		}
+	}
+	// If error is not nil, then the Security Group doesn't exists, we need
+	// to create new rule
+	if groupID, err = d.CreateSecurityGroup(securityGroupName); err != nil {
+		return "", err
+	}
+	return groupID, nil
 }

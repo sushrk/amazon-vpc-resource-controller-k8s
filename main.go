@@ -204,6 +204,7 @@ func main() {
 	// Set the API Server QPS and Burst
 	kubeConfig.QPS = config.DefaultAPIServerQPS
 	kubeConfig.Burst = config.DefaultAPIServerBurst
+	kubeConfig.UserAgent = fmt.Sprintf("%s/%s", ec2API.AppName, version.GitVersion)
 
 	setupLog.Info("starting the controller with leadership setting",
 		"leader mode enabled", enableLeaderElection,
@@ -342,15 +343,9 @@ func main() {
 
 	cleaner := &eniCleaner.ClusterENICleaner{
 		ClusterName: clusterName,
-	}
-	cleaner.ENICleaner = &eniCleaner.ENICleaner{
-		EC2Wrapper: ec2Wrapper,
-		Manager:    cleaner,
-		VPCID:      vpcID,
-		Log:        ctrl.Log.WithName("eniCleaner").WithName("cluster"),
-	}
-
-	if err := cleaner.SetupWithManager(ctx, mgr, healthzHandler); err != nil {
+		Log:         ctrl.Log.WithName("eni cleaner"),
+		VPCID:       vpcID,
+	}).SetupWithManager(ctx, mgr, healthzHandler); err != nil {
 		setupLog.Error(err, "unable to start eni cleaner")
 		os.Exit(1)
 	}
