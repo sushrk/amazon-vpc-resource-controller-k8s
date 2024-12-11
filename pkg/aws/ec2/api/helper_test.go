@@ -205,12 +205,8 @@ var (
 		NextToken: &tokenID,
 	}
 
-	describeTrunkInterfaceOutput1 = &ec2.DescribeNetworkInterfacesOutput{
-		NetworkInterfaces: []*ec2.NetworkInterface{&networkInterface1},
-		NextToken:         &tokenID,
-	}
-	describeTrunkInterfaceOutput2 = &ec2.DescribeNetworkInterfacesOutput{
-		NetworkInterfaces: []*ec2.NetworkInterface{&networkInterface2},
+	describeTrunkInterfaceOutput = &ec2.DescribeNetworkInterfacesOutput{
+		NetworkInterfaces: []*ec2.NetworkInterface{&networkInterface1, &networkInterface2},
 	}
 
 	describeTrunkInterfaceAssociationsInput = &ec2.DescribeTrunkInterfaceAssociationsInput{
@@ -1190,14 +1186,13 @@ func TestEC2APIHelper_AssignIPv4ResourcesAndWaitTillReady_TypeIPv4Prefix_Describ
 }
 
 // TestEc2APIHelper_GetBranchNetworkInterface_PaginatedResults returns the branch interface when paginated results is returned
-func TestEc2APIHelper_GetBranchNetworkInterface_PaginatedResults(t *testing.T) {
+func TestEc2APIHelper_GetBranchNetworkInterface(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
 	ec2ApiHelper, mockWrapper := getMockWrapper(ctrl)
 
-	mockWrapper.EXPECT().DescribeNetworkInterfaces(describeTrunkInterfaceInput1).Return(describeTrunkInterfaceOutput1, nil)
-	mockWrapper.EXPECT().DescribeNetworkInterfaces(describeTrunkInterfaceInput2).Return(describeTrunkInterfaceOutput2, nil)
+	mockWrapper.EXPECT().DescribeNetworkInterfaces(describeTrunkInterfaceInput).Return(describeTrunkInterfaceOutput, nil)
 
 	branchInterfaces, err := ec2ApiHelper.GetBranchNetworkInterface(&trunkInterfaceId, &subnetId)
 	assert.NoError(t, err)
