@@ -27,6 +27,7 @@ import (
 	"github.com/aws/amazon-vpc-resource-controller-k8s/pkg/node"
 	"github.com/aws/amazon-vpc-resource-controller-k8s/pkg/node/manager"
 	"github.com/aws/amazon-vpc-resource-controller-k8s/pkg/resource"
+	"github.com/aws/amazon-vpc-resource-controller-k8s/pkg/utils"
 	"github.com/google/uuid"
 
 	"github.com/go-logr/logr"
@@ -55,8 +56,7 @@ type PodReconciler struct {
 }
 
 var (
-	PodRequeueRequest          = ctrl.Result{Requeue: true, RequeueAfter: time.Second}
-	MaxPodConcurrentReconciles = 10
+	PodRequeueRequest = ctrl.Result{Requeue: true, RequeueAfter: time.Second}
 )
 
 // Reconcile handles create/update/delete event by delegating the request to the  handler
@@ -112,6 +112,10 @@ func (r *PodReconciler) Reconcile(request custom.Request) (ctrl.Result, error) {
 			logger.V(1).Info("pod's node is not yet initialized by the manager, will retry", "Requested", request.NamespacedName.String(), "Cached pod name", pod.ObjectMeta.Name, "Cached pod namespace", pod.ObjectMeta.Namespace)
 			return PodRequeueRequest, nil
 		} else if !node.IsManaged() {
+			if utils.PodHasENIRequest(pod) {
+				r.Log.Info("pod's node is not managed, but has eni request, will retry", "Requested", request.NamespacedName.String(), "Cached pod name", pod.ObjectMeta.Name, "Cached pod namespace", pod.ObjectMeta.Namespace)
+				return PodRequeueRequest, nil
+			}
 			logger.V(1).Info("pod's node is not managed, skipping pod event", "Requested", request.NamespacedName.String(), "Cached pod name", pod.ObjectMeta.Name, "Cached pod namespace", pod.ObjectMeta.Namespace)
 			return ctrl.Result{}, nil
 		} else if !node.IsReady() {
@@ -187,8 +191,8 @@ func getAggregateResources(pod *v1.Pod) map[string]int64 {
 // list of runnable. After Manager acquire the lease the pod controller runnable
 // will be started and the Pod events will be sent to Reconcile function
 func (r *PodReconciler) SetupWithManager(ctx context.Context, manager ctrl.Manager,
-	clientSet *kubernetes.Clientset, pageLimit int, syncPeriod time.Duration, healthzHandler *rcHealthz.HealthzHandler) error {
-	r.Log.Info("The pod controller is using MaxConcurrentReconciles", "Routines", MaxPodConcurrentReconciles)
+	clientSet *kubernetes.Clientset, pageLimit int, syncPeriod time.Duration, maxConcurrentReconciles int, healthzHandler *rcHealthz.HealthzHandler) error {
+	r.Log.Info("The pod controller is using MaxConcurrentReconciles", "Routines", maxConcurrentReconciles)
 
 	customChecker, err := custom.NewControllerManagedBy(ctx, manager).
 		WithLogger(r.Log.WithName("custom pod controller")).
@@ -200,7 +204,7 @@ func (r *PodReconciler) SetupWithManager(ctx context.Context, manager ctrl.Manag
 		}).Options(custom.Options{
 		PageLimit:               pageLimit,
 		ResyncPeriod:            syncPeriod,
-		MaxConcurrentReconciles: MaxPodConcurrentReconciles,
+		MaxConcurrentReconciles: maxConcurrentReconciles,
 	}).UsingConditions(r.Condition).Complete(r)
 
 	// add health check on subpath for pod and pod customized controllers

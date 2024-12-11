@@ -58,6 +58,7 @@ type manager struct {
 	conditions        condition.Conditions
 	controllerVersion string
 	clusterName       string
+	stopHealthCheckAt time.Time
 }
 
 // Manager to perform operation on list of managed/un-managed node
@@ -67,6 +68,7 @@ type Manager interface {
 	UpdateNode(nodeName string) error
 	DeleteNode(nodeName string) error
 	CheckNodeForLeakedENIs(nodeName string)
+	SkipHealthCheck() bool
 }
 
 // AsyncOperation is operation on a node after the lock has been released.
@@ -97,6 +99,8 @@ type AsyncOperationJob struct {
 	nodeName string
 }
 
+const pausingHealthCheckDuration = 10 * time.Minute
+
 // NewNodeManager returns a new node manager
 func NewNodeManager(logger logr.Logger, resourceManager resource.ResourceManager,
 	wrapper api.Wrapper, worker asyncWorker.Worker, conditions condition.Conditions, clusterName string, controllerVersion string, healthzHandler *rcHealthz.HealthzHandler) (Manager, error) {
@@ -121,28 +125,28 @@ func NewNodeManager(logger logr.Logger, resourceManager resource.ResourceManager
 }
 
 func (m *manager) CheckNodeForLeakedENIs(nodeName string) {
-	managedNode, found := m.GetNode(nodeName)
-	if !found {
-		m.Log.Info("Node manager couldn't find the node for reconciliation cleanup", "NodeName", nodeName)
+	cachedNode, found := m.GetNode(nodeName)
+	if !found || !cachedNode.IsManaged() {
+		m.Log.V(1).Info("node not found or not managed by controller, skip reconciliation", "nodeName", nodeName)
 		return
 	}
 
 	// Only start a goroutine when need to
-	if time.Now().After(managedNode.GetNextReconciliationTime()) {
+	if time.Now().After(cachedNode.GetNextReconciliationTime()) {
 		go func() {
 			if resourceProvider, found := m.resourceManager.GetResourceProvider(config.ResourceNamePodENI); found {
 				foundLeakedENI := resourceProvider.ReconcileNode(nodeName)
 				if foundLeakedENI {
-					managedNode.SetReconciliationInterval(node.NodeInitialCleanupInterval)
+					cachedNode.SetReconciliationInterval(node.NodeInitialCleanupInterval)
 				} else {
-					interval := wait.Jitter(managedNode.GetReconciliationInterval(), 5)
+					interval := wait.Jitter(cachedNode.GetReconciliationInterval(), 5)
 					if interval > node.MaxNodeReconciliationInterval {
 						interval = node.MaxNodeReconciliationInterval
 					}
-					managedNode.SetReconciliationInterval(interval)
+					cachedNode.SetReconciliationInterval(interval)
 				}
-				managedNode.SetNextReconciliationTime(time.Now().Add(managedNode.GetReconciliationInterval()))
-				m.Log.Info("reconciled cleanup node for leaking branch interfaces", "NodeName", nodeName, "NextInterval", managedNode.GetReconciliationInterval(), "NextReconciliationTime", managedNode.GetNextReconciliationTime())
+				cachedNode.SetNextReconciliationTime(time.Now().Add(cachedNode.GetReconciliationInterval()))
+				m.Log.Info("reconciled node to cleanup leaked branch ENIs", "NodeName", nodeName, "NextInterval", cachedNode.GetReconciliationInterval(), "NextReconciliationTime", cachedNode.GetNextReconciliationTime())
 			} else {
 				// no SGP provider enabled
 				return
@@ -230,7 +234,7 @@ func (m *manager) CreateCNINodeIfNotExisting(node *v1.Node) error {
 		}
 		return err
 	} else {
-		m.Log.V(1).Info("The CNINode is already existing", "CNINode", cniNode)
+		m.Log.Info("The CNINode is already existing", "cninode", cniNode.Name, "features", cniNode.Spec.Features)
 		return nil
 	}
 }
@@ -427,6 +431,10 @@ func (m *manager) performAsyncOperation(job interface{}) (ctrl.Result, error) {
 		utils.SendNodeEventWithNodeName(m.wrapper.K8sAPI, asyncJob.nodeName, utils.VersionNotice, fmt.Sprintf("The node is managed by VPC resource controller version %s", m.controllerVersion), v1.EventTypeNormal, m.Log)
 		err = asyncJob.node.InitResources(m.resourceManager)
 		if err != nil {
+			if pauseHealthCheckOnError(err) && !m.SkipHealthCheck() {
+				m.setStopHealthCheck()
+				log.Info("node manager sets a pause on health check due to observing a EC2 error", "error", err.Error())
+			}
 			log.Error(err, "removing the node from cache as it failed to initialize")
 			m.removeNodeSafe(asyncJob.nodeName)
 			// if initializing node failed, we want to make this visible although the manager will retry
@@ -567,12 +575,36 @@ func (m *manager) check() healthz.Checker {
 			randomName := uuid.New().String()
 			_, found := m.GetNode(randomName)
 			m.Log.V(1).Info("health check tested ping GetNode to check on datastore cache in node manager successfully", "TesedNodeName", randomName, "NodeFound", found)
-			var ping interface{}
-			m.worker.SubmitJob(ping)
-			m.Log.V(1).Info("health check tested ping SubmitJob with a nil job to check on worker queue in node manager successfully")
+			if m.SkipHealthCheck() {
+				m.Log.Info("due to EC2 error, node manager skips node worker queue health check for now")
+			} else {
+				var ping interface{}
+				m.worker.SubmitJob(ping)
+				m.Log.V(1).Info("health check tested ping SubmitJob with a nil job to check on worker queue in node manager successfully")
+			}
 			c <- nil
 		}, m.Log)
 
 		return err
 	}
+}
+
+func (m *manager) SkipHealthCheck() bool {
+	m.lock.RLock()
+	defer m.lock.RUnlock()
+
+	return time.Since(m.stopHealthCheckAt) < pausingHealthCheckDuration
+}
+
+func (m *manager) setStopHealthCheck() {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	m.stopHealthCheckAt = time.Now()
+}
+
+func pauseHealthCheckOnError(err error) bool {
+	return lo.ContainsBy(utils.PauseHealthCheckErrors, func(e string) bool {
+		return strings.Contains(err.Error(), e)
+	})
 }

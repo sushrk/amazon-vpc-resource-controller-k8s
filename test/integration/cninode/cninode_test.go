@@ -21,51 +21,43 @@ import (
 	"github.com/aws/amazon-vpc-resource-controller-k8s/pkg/utils"
 	"github.com/aws/amazon-vpc-resource-controller-k8s/test/framework/resource/k8s/node"
 	testUtils "github.com/aws/amazon-vpc-resource-controller-k8s/test/framework/utils"
-	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"k8s.io/apimachinery/pkg/util/wait"
 )
 
-var _ = Describe("CNINode test", func() {
+var _ = Describe("[CANARY]CNINode test", func() {
 	Describe("CNINode count verification on adding or removing node", func() {
+		var oldDesiredSize int64
 		var oldMinSize int64
 		var oldMaxSize int64
-		var newMinSize int64
-		var newMaxSize int64
+		var newSize int64
 		var asgName string
 		BeforeEach(func() {
 			By("getting autoscaling group name")
 			asgName = ListNodesAndGetAutoScalingGroupName()
 			asg, err := frameWork.AutoScalingManager.DescribeAutoScalingGroup(asgName)
 			Expect(err).ToNot(HaveOccurred())
+			oldDesiredSize = *asg[0].DesiredCapacity
 			oldMinSize = *asg[0].MinSize
 			oldMaxSize = *asg[0].MaxSize
 		})
 		AfterEach(func() {
-			By("restoring ASG minSize & maxSize after test")
-			err := frameWork.AutoScalingManager.UpdateAutoScalingGroup(asgName, oldMinSize, oldMaxSize)
+			By("restoring ASG desiredCapacity, minSize, maxSize after test")
+			err := frameWork.AutoScalingManager.UpdateAutoScalingGroup(asgName, oldDesiredSize, oldMinSize, oldMaxSize)
 			Expect(err).ToNot(HaveOccurred())
-			// sleep to allow ASG to be updated
-			time.Sleep(testUtils.ResourceCreationTimeout)
+			Expect(WaitTillNodeSizeUpdated(int(oldDesiredSize))).Should(Succeed())
 		})
 
 		Context("when new node is added", func() {
 			It("it should create new CNINode", func() {
-				newMinSize = oldMinSize + 1
-				newMaxSize = oldMaxSize + 1
-				// Update ASG to set new minSize and new maxSize
+				newSize = oldDesiredSize + 1
+				// Update ASG to set desiredSize
 				By("adding new node")
-				err := frameWork.AutoScalingManager.UpdateAutoScalingGroup(asgName, newMinSize, newMaxSize)
+				err := frameWork.AutoScalingManager.UpdateAutoScalingGroup(asgName, newSize, oldMinSize, newSize)
 				Expect(err).ToNot(HaveOccurred())
-				// sleep to allow ASG to be updated
-				time.Sleep(testUtils.ResourceCreationTimeout)
-
-				err = node.VerifyCNINodeCount(frameWork.NodeManager)
-				Expect(err).ToNot(HaveOccurred())
+				Expect(WaitTillNodeSizeUpdated(int(newSize))).Should(Succeed())
+				Expect(node.VerifyCNINode(frameWork.NodeManager)).Should(Succeed())
 			})
 		})
 		Context("when existing node is removed", func() {
@@ -151,6 +143,16 @@ var _ = Describe("CNINode test", func() {
 		})
 	})
 
+				newSize = oldDesiredSize - 1
+				// Update ASG to set new minSize and new maxSize
+				By("removing existing node")
+				err := frameWork.AutoScalingManager.UpdateAutoScalingGroup(asgName, newSize, newSize, oldMaxSize)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(WaitTillNodeSizeUpdated(int(newSize))).Should(Succeed())
+				Expect(node.VerifyCNINode(frameWork.NodeManager)).Should(Succeed())
+			})
+		})
+	})
 })
 
 func ListNodesAndGetAutoScalingGroupName() string {
@@ -180,4 +182,19 @@ func VerifyCNINodeFields(cniNode *v1alpha1.CNINode) {
 	By("verifying node OS label is set")
 	Expect(cniNode.ObjectMeta.Labels).To(ContainElement(config.OSLinux))
 	Expect(config.NodeLabelOS).To(BeKeyOf(cniNode.ObjectMeta.Labels))
+// Verifies (linux) node size is updated after ASG is updated
+func WaitTillNodeSizeUpdated(desiredSize int) error {
+	By("waiting till node list is updated")
+	err := wait.PollUntilContextTimeout(context.Background(), testUtils.PollIntervalShort, testUtils.ResourceCreationTimeout, true,
+		func(ctx context.Context) (bool, error) {
+			nodes, err := frameWork.NodeManager.GetNodesWithOS(config.OSLinux) // since we are only updating the linux ASG in the test
+			if err != nil {
+				return false, nil
+			}
+			if len(nodes.Items) != desiredSize {
+				return false, nil
+			}
+			return true, nil
+		})
+	return err
 }
